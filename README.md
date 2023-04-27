@@ -1,4 +1,4 @@
-# Nashville_Active_Incident_Map v. 1.0
+# Nashville_Active_Incident_Map v. 1.1
 https://roderick.shinyapps.io/Nashville_Active_Incident_Map/
 
 R Shiny App that visualizes Nashville's active dispatch report
