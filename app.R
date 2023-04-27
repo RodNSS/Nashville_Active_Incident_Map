@@ -8,10 +8,14 @@ library(leaflet.extras)
 library(ggplot2)
 library(glue)
 library(shiny)
+library(bslib)
+library(thematic)
+library(htmltools)
+thematic::thematic_shiny(font = "auto")
 
 mapbox <- Sys.getenv("MAPBOX_API_KEY")
 
-attribution <- "© <a href='https://www.mapbox.com/about/maps/'>Mapbox</a>"
+attribution <- "© <a href='https://www.mapbox.com/about/maps/'>Mapbox</a> © <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a> <strong><a"
 # Function to retrieve and process data
 get_data <- function(data_source) {
   # Retrieve data from the API
@@ -20,10 +24,12 @@ get_data <- function(data_source) {
   
   # Add Nashville to the address column for geocoding coordinates
   data <- data %>%
-    mutate(address = paste0(address, ' ', "Nashville, TN"))
+    mutate(address = ifelse(grepl("OLD HICKORY BLVD", address) & city == "HERMITAGE",
+                            paste0(address, ' ', "Hermitage, TN"),
+                            paste0(address, ' ', "Nashville, TN")))
   # Get lat_long coordinates
   lat_long <- geo(address = data$address, method = "arcgis")
-  # Prcoess the data
+  # Process the data
   data <- data %>% 
     select(-address) %>% 
     cbind(lat_long) %>% 
@@ -40,14 +46,15 @@ get_data <- function(data_source) {
                                                "SHOOTING", 
                                                "HOLD UP ROBBERY IN PROGRESS", 
                                                "ROBERRY/HOLD UP ALARM", 
-                                               "HOLD UP ROBBERY IN PROGRESS JUVENILE"), "red", "orange")) # Color code incidents based on threat level
+                                               "HOLD UP ROBBERY IN PROGRESS JUVENILE",
+                                               "SHOOTING IN PROGRESS JUVENILE"), "red", "orange")) # Color code incidents based on threat level
   
   return(df)
 }
-
+theme <- bslib::bs_theme(version = 5, bootswatch = "superhero", bg = '#222222', fg = '#11F5DF' )
 # Shiny app code
 ui <- fluidPage(
-  # Positioning code for map and overlaid barplot
+  theme = theme,
   tags$style(HTML("
     #map { 
       position: absolute; 
@@ -74,9 +81,15 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
+  #bs_themer()
+  # Define variable to hold leaflet map
+  m <- leaflet() %>% 
+    addTiles(mapbox, attribution) %>% 
+    setView(lat = 36.1627, lng = -86.7816, zoom = 11) %>% 
+    addResetMapButton()
   
-  # Update data source every 5 minutes
-  data_source <- reactivePoll(1000 * 60 * 5, session, 
+  # Update data source every 15 minutes
+  data_source <- reactivePoll(1000 * 60 * 15, session, 
                               valueFunc = function() {
                                 get_data("https://data.nashville.gov/resource/qywv-8sc2.json")
                               }, 
@@ -86,24 +99,45 @@ server <- function(input, output, session) {
   
   # Leaflet map output
   output$map <- renderLeaflet({
-    map <- leaflet() %>% 
-      addTiles(mapbox, attribution) %>% 
+    m %>% 
       clearMarkers() %>% 
       addCircleMarkers(data = data_source(), 
                        lat = ~lat, 
                        lng = ~long, 
                        color = ~color,
+                       label = paste0("Incident Type: ", data_source()$incident_type, 
+                                      "<br>", "Call Received: ", data_source()$call_received, 
+                                      "<br>", "Address: ", data_source()$address, 
+                                      "<br>", "City: ", data_source()$city) %>% lapply(htmltools::HTML),
                        popup = paste0("Incident Type: ", data_source()$incident_type, 
                                       "<br>", "Call Received: ", data_source()$call_received, 
                                       "<br>", "Address: ", data_source()$address, 
                                       "<br>", "City: ", data_source()$city,
                                       "<br>", data_source()$gsv_links), 
-                       clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier=1.5, maxClusterRadius = 1)) %>%
-      setView(lat = 36.1627, lng = -86.7816, zoom = 11) %>% 
-      addResetMapButton()
-    map
+                       clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier=1.5, maxClusterRadius = 1))
   })
   
+  # Update markers every 15 minutes
+  observeEvent(data_source(), {
+    leafletProxy("map") %>%
+      clearMarkers() %>%
+      addCircleMarkers(data = data_source(), 
+                       lat = ~lat, 
+                       lng = ~long, 
+                       color = ~color,
+                       label = paste0("Incident Type: ", data_source()$incident_type, 
+                                      "<br>", "Call Received: ", data_source()$call_received, 
+                                      "<br>", "Address: ", data_source()$address, 
+                                      "<br>", "City: ", data_source()$city) %>% lapply(htmltools::HTML),
+                       popup = paste0("Incident Type: ", data_source()$incident_type, 
+                                      "<br>", "Call Received: ", data_source()$call_received, 
+                                      "<br>", "Address: ", data_source()$address, 
+                                      "<br>", "City: ", data_source()$city,
+                                      "<br>", data_source()$gsv_links), 
+                       clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier=1.5, maxClusterRadius = 1))
+  })
+  
+
   # Bar chart output
   output$chart <- renderPlot({
     crime_count <- data_source() %>%
@@ -117,7 +151,7 @@ server <- function(input, output, session) {
       xlab("") +
       ylab("") +
       ggtitle(paste(nrow(data_source()),"ACTIVE INCIDENTS")) +
-      geom_text(aes(y = count, label = count), hjust = -0.2, size = 4) +
+      geom_text(aes(y = count, label = count), hjust = -0.2, size = 5) +
       theme(legend.position = "none",
             panel.background = element_rect(fill = "#222222"), 
             panel.grid.major = element_blank(), 
@@ -126,8 +160,8 @@ server <- function(input, output, session) {
             axis.ticks.x = element_blank(),
             axis.text.y = element_text(size = 12),
             plot.title = element_text(size = 13)) 
-    
   })
 }
+
 
 shinyApp(ui = ui, server = server)
