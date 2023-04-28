@@ -14,7 +14,6 @@ library(htmltools)
 thematic::thematic_shiny(font = "auto")
 
 mapbox <- Sys.getenv("MAPBOX_API_KEY")
-
 attribution <- "© <a href='https://www.mapbox.com/about/maps/'>Mapbox</a> © <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a> <strong><a"
 # Function to retrieve and process data
 get_data <- function(data_source) {
@@ -24,9 +23,11 @@ get_data <- function(data_source) {
   
   # Add Nashville to the address column for geocoding coordinates
   data <- data %>%
+    mutate(address = gsub("/", "&", address)) %>%
     mutate(address = ifelse(grepl("OLD HICKORY BLVD", address) & city == "HERMITAGE",
                             paste0(address, ' ', "Hermitage, TN"),
                             paste0(address, ' ', "Nashville, TN")))
+  
   # Get lat_long coordinates
   lat_long <- geo(address = data$address, method = "arcgis")
   # Process the data
