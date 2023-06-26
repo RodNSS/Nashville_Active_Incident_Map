@@ -37,18 +37,12 @@ get_data <- function(data_source) {
     mutate(address = gsub("Nashville, TN", "", address),
            coord = paste(lat, long, sep = ","),  # Creates new column with the latitude and longitude coordinates
            gsv = glue("http://maps.google.com/maps?q=&layer=c&cbll={coord}"),  # Creates new column with the Google Street View URL
-           gsv_links = paste0('<a target=_blank href=', gsv, '>Google Street View</a>'))  # Creates new column with the Google Street View clickable link
+           gsv_links = paste0('<a target=_blank href=', gsv, '>Street View</a>'))  # Creates new column with the Google Street View clickable link
   
   df <- data %>% 
     select(incident_type, call_received, address, city, lat, long, gsv_links) %>% 
     mutate(call_received = format(as.POSIXct(call_received, format = "%Y-%m-%dT%H:%M:%S"), "%I:%M:%S %p"), # Converts military time
-           city = as.character(city),
-           color = ifelse(incident_type %in% c("SHOTS FIRED", 
-                                               "SHOOTING", 
-                                               "HOLD UP ROBBERY IN PROGRESS", 
-                                               "ROBERRY/HOLD UP ALARM", 
-                                               "HOLD UP ROBBERY IN PROGRESS JUVENILE",
-                                               "SHOOTING IN PROGRESS JUVENILE"), "red", "orange")) # Color code incidents based on threat level
+           city = as.character(city)) 
   
   return(df)
 }
@@ -102,43 +96,76 @@ server <- function(input, output, session) {
   output$map <- renderLeaflet({
     m %>% 
       clearMarkers() %>% 
-      addCircleMarkers(data = data_source(), 
-                       lat = ~lat, 
-                       lng = ~long, 
-                       color = ~color,
-                       label = paste0("Incident Type: ", data_source()$incident_type, 
-                                      "<br>", "Call Received: ", data_source()$call_received, 
-                                      "<br>", "Address: ", data_source()$address, 
-                                      "<br>", "City: ", data_source()$city) %>% lapply(htmltools::HTML),
-                       popup = paste0("Incident Type: ", data_source()$incident_type, 
-                                      "<br>", "Call Received: ", data_source()$call_received, 
-                                      "<br>", "Address: ", data_source()$address, 
-                                      "<br>", "City: ", data_source()$city,
-                                      "<br>", data_source()$gsv_links), 
-                       clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier=1.5, maxClusterRadius = 1))
+      addPulseMarkers(
+        data = data_source(), 
+        lat = ~lat, 
+        lng = ~long,
+        label = ~paste0("Incident Type: ", incident_type, 
+                        "<br>", "Call Received: ", call_received, 
+                        "<br>", "Address: ", address, 
+                        "<br>", "City/Area: ", city) %>% lapply(htmltools::HTML),
+        popup = ~paste0("Incident Type: ", incident_type, 
+                        "<br>", "Call Received: ", call_received, 
+                        "<br>", "Address: ", address, 
+                        "<br>", "City/Area: ", city,
+                        "<br>", gsv_links), 
+        clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier=1.5, maxClusterRadius = 1),
+        icon = makePulseIcon(
+          heartbeat = ifelse(data_source()$incident_type %in% c("SHOTS FIRED", 
+                                                                "SHOOTING", 
+                                                                "HOLD UP ROBBERY IN PROGRESS", 
+                                                                "ROBBERY/HOLD UP ALARM", 
+                                                                "HOLD UP ROBBERY IN PROGRESS JUVENILE",
+                                                                "SHOOTING IN PROGRESS JUVENILE"), 1, 2), 
+          iconSize = c(10, 10), 
+          color = ifelse(data_source()$incident_type %in% c("SHOTS FIRED", 
+                                                            "SHOOTING", 
+                                                            "HOLD UP ROBBERY IN PROGRESS", 
+                                                            "ROBBERY/HOLD UP ALARM", 
+                                                            "HOLD UP ROBBERY IN PROGRESS JUVENILE",
+                                                            "SHOOTING IN PROGRESS JUVENILE"), "red", "orange")
+        )
+      )
   })
+  
   
   # Update markers every 15 minutes
   observeEvent(data_source(), {
     leafletProxy("map") %>%
       clearMarkers() %>%
-      addCircleMarkers(data = data_source(), 
-                       lat = ~lat, 
-                       lng = ~long, 
-                       color = ~color,
-                       label = paste0("Incident Type: ", data_source()$incident_type, 
-                                      "<br>", "Call Received: ", data_source()$call_received, 
-                                      "<br>", "Address: ", data_source()$address, 
-                                      "<br>", "City: ", data_source()$city) %>% lapply(htmltools::HTML),
-                       popup = paste0("Incident Type: ", data_source()$incident_type, 
-                                      "<br>", "Call Received: ", data_source()$call_received, 
-                                      "<br>", "Address: ", data_source()$address, 
-                                      "<br>", "City: ", data_source()$city,
-                                      "<br>", data_source()$gsv_links), 
-                       clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier=1.5, maxClusterRadius = 1))
+      addPulseMarkers(
+        data = data_source(),
+        lat = ~lat,
+        lng = ~long,
+        label = ~paste0("Incident Type: ", incident_type, 
+                        "<br>", "Call Received: ", call_received, 
+                        "<br>", "Address: ", address, 
+                        "<br>", "City/Area: ", city) %>% lapply(htmltools::HTML),
+        popup = ~paste0("Incident Type: ", incident_type, 
+                        "<br>", "Call Received: ", call_received, 
+                        "<br>", "Address: ", address, 
+                        "<br>", "City/Area: ", city,
+                        "<br>", gsv_links),
+        clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier = 1.5, maxClusterRadius = 1),
+        icon = makePulseIcon(
+          heartbeat = ifelse(data_source()$incident_type %in% c("SHOTS FIRED", 
+                                                                "SHOOTING", 
+                                                                "HOLD UP ROBBERY IN PROGRESS", 
+                                                                "ROBBERY/HOLD UP ALARM", 
+                                                                "HOLD UP ROBBERY IN PROGRESS JUVENILE",
+                                                                "SHOOTING IN PROGRESS JUVENILE"), 1, 2), 
+          iconSize = c(10, 10), 
+          color = ifelse(data_source()$incident_type %in% c("SHOTS FIRED", 
+                                                            "SHOOTING", 
+                                                            "HOLD UP ROBBERY IN PROGRESS", 
+                                                            "ROBBERY/HOLD UP ALARM", 
+                                                            "HOLD UP ROBBERY IN PROGRESS JUVENILE",
+                                                            "SHOOTING IN PROGRESS JUVENILE"), "red", "orange")
+        )
+      )
   })
   
-
+  
   # Bar chart output
   output$chart <- renderPlot({
     crime_count <- data_source() %>%
