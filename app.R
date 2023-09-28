@@ -37,7 +37,8 @@ get_data <- function(data_source) {
     mutate(address = gsub("Nashville, TN", "", address),
            coord = paste(lat, long, sep = ","),  # Creates new column with the latitude and longitude coordinates
            gsv = glue("http://maps.google.com/maps?q=&layer=c&cbll={coord}"),  # Creates new column with the Google Street View URL
-           gsv_links = paste0('<a target=_blank href=', gsv, '>Street View</a>'))  # Creates new column with the Google Street View clickable link
+           gsv_links = paste0('<a target=_blank href=', gsv, '>Street View</a>'),  # Creates new column with the Google Street View clickable link
+           incident_type = gsub("ROBERRY/HOLD UP ALARM", "ROBBERY/HOLD UP ALARM", incident_type)) # Robbery is misspelled in the json data
   
   df <- data %>% 
     select(incident_type, call_received, address, city, lat, long, gsv_links) %>% 
