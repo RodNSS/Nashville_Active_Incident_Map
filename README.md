@@ -1,4 +1,4 @@
-# Nashville_Active_Incident_Map v. 1.1
+# Nashville_Active_Incident_Map v. 1.2
 ![](map.gif)
 
 https://roderick.shinyapps.io/Nashville_Active_Incident_Map/
