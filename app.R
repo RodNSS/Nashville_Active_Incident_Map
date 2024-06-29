@@ -19,20 +19,44 @@ get_data <- function(data_source) {
   
   # Retrieve data from the API
   data_url <- data_source
-  data <- fromJSON(data_url)
   
-  # Replace '/' with '&' and add Nashville, Brentwood or Hermitage to the address column for better geocoding accuracy
+  # Define query parameters
+  query_params <- list(
+    outFields = "*",
+    where = "1=1",
+    f = "geojson"
+  )
+  
+  # Make GET request and parse geojson response
+  response <- GET(data_url, query = query_params)
+  geojson_content <- content(response, "text", encoding = "UTF-8")
+  
+  # Convert GeoJSON to sf object
+  sf_data <- sf::st_read(geojson_content)
+  
+  # Extract normal dataframe and select desired columns
+  normal_df <- st_drop_geometry(sf_data)
+  desired_columns <- c("IncidentTypeName", "CallReceivedTime", "Location", "CityName")
+  data <- normal_df[, desired_columns]
+  
+  # Convert milliseconds to Central US Time
+  data$CallReceivedTime <- as.POSIXct(data$CallReceivedTime / 1000, origin = "1970-01-01", tz = "UTC")
+  data$CallReceivedTime <- format(data$CallReceivedTime, tz = "America/Chicago", usetz = TRUE)
+  data$CallReceivedTime <- format(as.POSIXct(data$CallReceivedTime, tz = "America/Chicago"), "%m-%d-%Y %l:%M %p")
+  
+  # Select and lowercase columns
+  data <- data[, c("IncidentTypeName", "CallReceivedTime", "Location", "CityName")]
+  names(data) <- c("incident_type", "call_received", "address", "city")
+  
+  # Replace '/' with '&' and select correct area for Old HIckory Blvd
   data <- data %>%
     mutate(
       address = gsub("/", "&", address),
-      address = ifelse(
-        grepl("OLD HICKORY BLVD", address) & city == "BRENTWOOD DAVIDSON COUNTY",
-        paste0(address, ' ', "Brentwood, TN"),
-        ifelse(
-          grepl("OLD HICKORY BLVD", address) & city == "HERMITAGE",
-          paste0(address, ' ', "Hermitage, TN"),
-          paste0(address, ' ', "Nashville, TN")
-        )
+      address = case_when(
+        grepl("OLD HICKORY BLVD", address) & city == "BRENTWOOD DAVIDSON COUNTY" ~ paste0(address, ", Brentwood, TN"),
+        grepl("OLD HICKORY BLVD", address) & city == "HERMITAGE" ~ paste0(address, ", Hermitage, TN"),
+        grepl("OLD HICKORY BLVD", address) & city == "OLD HICKORY" ~ paste0(address, ", Old Hickory, TN"),
+        TRUE ~ paste0(address, ", Nashville, TN")
       )
     )
   
@@ -62,7 +86,6 @@ get_data <- function(data_source) {
   df <- data %>% 
     select(incident_type, call_received, address, city, lat, long, gsv_links) %>% 
     mutate(
-      call_received = format(as.POSIXct(call_received, format = "%Y-%m-%dT%H:%M:%S"), "%I:%M:%S %p"),  # Convert military time
       city = as.character(city)
     )
   
@@ -116,7 +139,7 @@ server <- function(input, output, session) {
   # Update data source every 15 minutes
   data_source <- reactivePoll(1000 * 60 * 15, session, 
                               valueFunc = function() {
-                                get_data("https://data.nashville.gov/resource/qywv-8sc2.json")
+                                get_data("https://services2.arcgis.com/HdTo6HJqh92wn4D8/arcgis/rest/services/Metro_Nashville_Police_Department_Active_Dispatch_Table_view/FeatureServer/0/query")
                               }, 
                               checkFunc = function() {
                                 Sys.time()
